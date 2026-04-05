@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { NODE_ENV } from '../config/env';
 
 const errorHandler = (
   err: Error & { statusCode?: number },
@@ -12,7 +13,8 @@ const errorHandler = (
   res.status(statusCode).json({
     success: false,
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    // Show stack trace only in development
+    ...(NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
 
