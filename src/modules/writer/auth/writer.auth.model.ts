@@ -53,7 +53,7 @@ const writerSchema = new Schema<IWriter>(
     phoneNumber: {
       type: String,
       default: null,
-      match: [/^\+?[1-9]\d{6,14}$/, 'Invalid phone number format'],
+      //match: [/^\+?[1-9]\d{6,14}$/, 'Invalid phone number format'],
     },
 
     bio: {
