@@ -498,48 +498,6 @@ const requestRevision = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
-// ─────────────────────────────────────────
-// PATCH /api/story/editor/edit/:storyId
-// Editor can edit story content directly before publishing
-// form-data: any story field + coverImage (file, optional)
-// ─────────────────────────────────────────
-const editorEditStory = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { storyId } = req.params;
-    const { title, summary, content, category, tags, isPremium } = req.body;
-
-    const story = await Story.findById(storyId);
-    if (!story) throw createError(404, 'Story not found');
-
-    // Editor can only edit pending stories
-    if (story.status !== 'pending') {
-      throw createError(400, 'Editor can only edit pending stories');
-    }
-
-    // Handle new cover image
-    if (req.file) {
-      await deleteImageFromS3(story.coverImage);
-      story.coverImage = await uploadImageToS3(req.file.buffer, req.file.mimetype, 'story-covers');
-    }
-
-    if (title) story.title = title;
-    if (summary) story.summary = summary;
-    if (content) story.content = content;
-    if (category) story.category = category;
-    if (tags) story.tags = Array.isArray(tags) ? tags : JSON.parse(tags);
-    if (isPremium !== undefined) story.isPremium = isPremium === 'true' || isPremium === true;
-
-    await story.save();
-
-    return res.status(200).json({
-      success: true,
-      message: 'Story updated by editor',
-      data: story,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 // ─────────────────────────────────────────
 // GET /api/story/editor/all
@@ -583,13 +541,58 @@ const getAllStoriesForEditor = async (req: Request, res: Response, next: NextFun
   }
 };
 
+// ─────────────────────────────────────────
+// PATCH /api/story/editor/edit/:storyId
+// Editor edits story directly before publishing
+// form-data: any story field + coverImage (file, optional)
+// ─────────────────────────────────────────
+const editorEditStory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { storyId } = req.params;
+    const { title, summary, content, category, tags, isPremium } = req.body;
+
+    const story = await Story.findById(storyId);
+    if (!story) throw createError(404, 'Story not found');
+
+    // Editor can only edit pending stories
+    if (story.status !== 'pending') {
+      throw createError(400, 'Editor can only edit pending stories');
+    }
+
+    // Handle new cover image
+    if (req.file) {
+      await deleteImageFromS3(story.coverImage);
+      story.coverImage = await uploadImageToS3(req.file.buffer, req.file.mimetype, 'story-covers');
+    }
+
+    if (title) story.title = title;
+    if (summary) story.summary = summary;
+    if (content) story.content = content;
+    if (category) story.category = category;
+    if (tags) story.tags = Array.isArray(tags) ? tags : JSON.parse(tags);
+    if (isPremium !== undefined) story.isPremium = isPremium === 'true' || isPremium === true;
+
+    await story.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Story updated by editor',
+      data: story,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ══════════════════════════════════════════
 //  READER CONTROLLERS
 // ══════════════════════════════════════════
 
+
+
 // ─────────────────────────────────────────
 // GET /api/story/reader/all
-// Reader gets all published stories — list view only (no full content)
+// Everyone gets list — no token needed
 // query: ?category=politics&page=1&limit=10
 // ─────────────────────────────────────────
 const getAllStoriesForReader = async (req: Request, res: Response, next: NextFunction) => {
@@ -605,8 +608,8 @@ const getAllStoriesForReader = async (req: Request, res: Response, next: NextFun
 
     const [stories, total] = await Promise.all([
       Story.find(filter)
-        // Only return what reader needs in list view — no full content
-        .select('title summary coverImage category isPremium readingTime scheduledAt createdAt')
+        // List view — no full content, just what card needs
+        .select('title summary coverImage category isPremium readingTime author createdAt')
         .populate('author', 'name profileImage')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -631,9 +634,10 @@ const getAllStoriesForReader = async (req: Request, res: Response, next: NextFun
 
 // ─────────────────────────────────────────
 // GET /api/story/reader/detail/:storyId
-// Reader gets full story detail
-// Free story → anyone can read
-// Premium story → only subscribed readers
+// Story detail — logic:
+// Free story     → full content for everyone
+// Premium story  → full content only if reader isSubscribed true
+//               → otherwise send subscribe response for frontend to redirect
 // ─────────────────────────────────────────
 const getStoryDetailForReader = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -646,29 +650,47 @@ const getStoryDetailForReader = async (req: Request, res: Response, next: NextFu
 
     if (!story) throw createError(404, 'Story not found');
 
-    // If premium story — check subscription
-    if (story.isPremium) {
-      // req.readerId is set by verifyReader middleware
-      // if no readerId it means not logged in
-      if (!req.readerId) {
-        return res.status(403).json({
-          success: false,
-          message: 'Please login to read premium content',
-        });
-      }
-
-      // Import Reader model to check subscription
-      const { Reader } = await import('../../reader/auth/reader.model');
-      const reader = await Reader.findById(req.readerId);
-
-      if (!reader || !reader.isSubscribed) {
-        return res.status(403).json({
-          success: false,
-          message: 'Subscribe to read premium content',
-        });
-      }
+    // Free story — give full content to everyone no check needed
+    if (!story.isPremium) {
+      return res.status(200).json({
+        success: true,
+        data: story,
+      });
     }
 
+    // Premium story — check if reader token exists in header
+    const authHeader = req.headers.authorization;
+
+    // No token at all — not logged in
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(403).json({
+        success: false,
+        isPremium: true,
+        subscriptionRequired: true,
+        message: 'Please login and subscribe to read premium content',
+      });
+    }
+
+    // Has token — verify and check subscription
+    const token = authHeader.split(' ')[1];
+
+    const { verifyAccessToken } = await import('../../../utils/jwt.utils');
+    const decoded = verifyAccessToken(token);
+
+    const { Reader } = await import('../../reader/auth/reader.model');
+    const reader = await Reader.findById(decoded.id);
+
+    // Reader exists but not subscribed
+    if (!reader || !reader.isSubscribed) {
+      return res.status(403).json({
+        success: false,
+        isPremium: true,
+        subscriptionRequired: true,
+        message: 'Subscribe to read premium content',
+      });
+    }
+
+    // Subscribed reader — give full content
     return res.status(200).json({
       success: true,
       data: story,
@@ -677,6 +699,8 @@ const getStoryDetailForReader = async (req: Request, res: Response, next: NextFu
     next(error);
   }
 };
+
+
 
 export {
   // Writer
@@ -697,6 +721,7 @@ export {
   requestRevision,
   editorEditStory,
   getAllStoriesForEditor,
+ 
   // Reader
   getAllStoriesForReader,
   getStoryDetailForReader,
