@@ -14,6 +14,7 @@ import adminAuthRouter from './modules/admin/auth/admin.auth.router';
 import adminProfileRouter from './modules/admin/profile/admin.profile.router';
 import editorAuthRouter from './modules/editor/auth/editor.auth.router';
 import editorProfileRouter from './modules/editor/profile/editor.profile.router';
+import storyRouter from './modules/common/story/story.router';
 
 const app: Application = express();
 
@@ -36,6 +37,9 @@ app.use('/api/v1/admin/profile', adminProfileRouter);
 app.use('/api/v1/editor/auth', editorAuthRouter);
 app.use('/api/v1/editor/profile', editorProfileRouter)
 // ── Routes auth/profile ──────────────────────────────
+
+// ── Routes post/story or any  ──────────────────────────────
+app.use('/api/v1/story', storyRouter);
 
 // Health check
 app.get('/health', (_req, res) => {

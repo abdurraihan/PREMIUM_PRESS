@@ -89,7 +89,7 @@ const readerSchema = new Schema<IReader>(
     interest: {
       type: String,
       enum: {
-        values: ['explore', 'politics', 'business', 'finance', 'technology'],
+        values: ['explore', 'politics', 'business', 'finance', 'technology', 'culture' , 'gestronomy' , 'idx'],
         message: '{VALUE} is not a valid interest',
       },
       default: 'explore',

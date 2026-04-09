@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { Admin } from './admin.model';
-import { Editor } from '../../editor/auth/editor.model';
+
 import { generateTokens } from '../../../utils/jwt.utils';
 import { sendOtpEmail } from '../../../utils/email.utils';
 import { createError } from '../../../utils/ApiError';
@@ -130,27 +130,7 @@ const resetPassword = async (req: Request, res: Response, next: NextFunction) =>
   }
 };
 
-const createEditor = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: 'Name, email and password are required' });
-    }
 
-    const exists = await Editor.findOne({ email });
-    if (exists) throw createError(400, 'Email already registered');
 
-    const hashed = await bcrypt.hash(password, 10);
-    const editor = await Editor.create({ name, email, password: hashed });
 
-    return res.status(201).json({
-      success: true,
-      message: 'Editor account created successfully.',
-      data: { id: editor._id, name: editor.name, email: editor.email },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export { signup, login, forgotPassword, resetPassword,createEditor };
+export { signup, login, forgotPassword, resetPassword};
