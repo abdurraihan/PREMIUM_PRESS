@@ -17,6 +17,8 @@ import editorProfileRouter from './modules/editor/profile/editor.profile.router'
 import storyRouter from './modules/common/story/story.router';
 import podcastRouter from './modules/common/podcast/podcast.router';
 import liveNewsRouter from './modules/common/liveNews/liveNews.router';
+import commentRouter from './modules/common/comment/comment.router';
+import reactRouter from './modules/common/react/react.router';
 
 const app: Application = express();
 
@@ -44,6 +46,12 @@ app.use('/api/v1/editor/profile', editorProfileRouter)
 app.use('/api/v1/story', storyRouter);
 app.use('/api/v1/podcast', podcastRouter);
 app.use('/api/v1/live-news', liveNewsRouter);
+// ── Routes post/story or any  ──────────────────────────────
+
+// ── Routes comment/react or any  ──────────────────────────────
+app.use('/api/v1/comment', commentRouter);
+app.use('/api/v1/react', reactRouter);
+// ── Routes comment/react or any  ──────────────────────────────
 
 // Health check
 app.get('/health', (_req, res) => {

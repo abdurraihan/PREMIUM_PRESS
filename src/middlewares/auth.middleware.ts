@@ -170,3 +170,73 @@ export const verifyEditor = async (req: Request, res: Response, next: NextFuncti
     return res.status(500).json({ success: false, message: 'Server error during authentication.' });
   }
 };
+
+
+// ─────────────────────────────────────────
+// Verify Reader OR Writer
+// Used for comment and react — both can use same endpoint
+// Sets req.readerId or req.writerId depending on who calls
+// ─────────────────────────────────────────
+export const verifyReaderOrWriter = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided. Authorization denied.',
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided. Authorization denied.',
+      });
+    }
+
+    const decoded = verifyAccessToken(token);
+
+    // Check reader first
+    const reader = await Reader.findById(decoded.id);
+    if (reader) {
+      if (!reader.isVerified) {
+        return res.status(403).json({
+          success: false,
+          message: 'Email not verified.',
+        });
+      }
+      req.readerId = decoded.id;
+      return next();
+    }
+
+    // Check writer
+    const writer = await Writer.findById(decoded.id);
+    if (writer) {
+      if (!writer.isVerified) {
+        return res.status(403).json({
+          success: false,
+          message: 'Email not verified.',
+        });
+      }
+      req.writerId = decoded.id;
+      return next();
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: 'User not found. Authorization denied.',
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json({ success: false, message: 'Token expired. Please login again.' });
+      }
+      if (error.name === 'JsonWebTokenError') {
+        return res.status(401).json({ success: false, message: 'Invalid token. Authorization denied.' });
+      }
+    }
+    return res.status(500).json({ success: false, message: 'Server error during authentication.' });
+  }
+};
