@@ -1,5 +1,6 @@
 import { Schema, model, Document } from 'mongoose';
 
+
 // Interest categories — exactly matching the UI
 export type ReaderInterest = 'explore' | 'politics' | 'business' | 'finance' | 'technology';
 
@@ -17,7 +18,8 @@ export interface IReader extends Document {
   isSocialLogin: boolean;
   city: string | null;
   age: number | null;
-  interest: ReaderInterest;  // single value now
+  interest: ReaderInterest;// single value now
+  followingCount:number;  
 }
 
 const readerSchema = new Schema<IReader>(
@@ -94,6 +96,11 @@ const readerSchema = new Schema<IReader>(
       },
       default: 'explore',
     },
+
+    followingCount: {
+  type: Number,
+  default: 0,
+},
   },
   { timestamps: true }
 );

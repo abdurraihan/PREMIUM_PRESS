@@ -13,6 +13,7 @@ export interface IWriter extends Document {
   address: string | null;
   age: number | null;
   isSocialLogin: boolean;
+  followersCount: number;
 }
 
 const writerSchema = new Schema<IWriter>(
@@ -74,6 +75,10 @@ const writerSchema = new Schema<IWriter>(
       min: [1, 'Age must be at least 1'],
       max: [120, 'Age must be below 120'],
     },
+   followersCount: {
+  type: Number,
+  default: 0,
+},
 
     isSocialLogin: { type: Boolean, default: false },
   },

@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import { NODE_ENV } from './config/env';
 import { errorHandler } from './middlewares/errorHandler.middlewares';
 
-// Reader routes
+// routers 
 import readerAuthRouter from './modules/reader/auth/reader.router';
 import readerProfileRouter from './modules/reader/profile/reader.prorile.router';
 import writerAuthRouter from './modules/writer/auth/writer.auth.router';
@@ -19,6 +19,8 @@ import podcastRouter from './modules/common/podcast/podcast.router';
 import liveNewsRouter from './modules/common/liveNews/liveNews.router';
 import commentRouter from './modules/common/comment/comment.router';
 import reactRouter from './modules/common/react/react.router';
+import followRouter from './modules/common/follow-unfollow/followUnfollow.router';
+import libraryRouter from './modules/common/libray/library.router';
 
 const app: Application = express();
 
@@ -48,9 +50,11 @@ app.use('/api/v1/podcast', podcastRouter);
 app.use('/api/v1/live-news', liveNewsRouter);
 // ── Routes post/story or any  ──────────────────────────────
 
-// ── Routes comment/react or any  ──────────────────────────────
+// ── Routes common or any  ──────────────────────────────
 app.use('/api/v1/comment', commentRouter);
 app.use('/api/v1/react', reactRouter);
+app.use('/api/v1/follow', followRouter);
+app.use('/api/v1/library', libraryRouter);
 // ── Routes comment/react or any  ──────────────────────────────
 
 // Health check
