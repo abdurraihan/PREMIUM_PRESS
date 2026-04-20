@@ -189,7 +189,6 @@ const getMyStories = async (req: Request, res: Response, next: NextFunction) => 
 
     const [stories, total] = await Promise.all([
       Story.find(filter)
-        .select('-content') // exclude full content in list view
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum),

@@ -21,6 +21,7 @@ import commentRouter from './modules/common/comment/comment.router';
 import reactRouter from './modules/common/react/react.router';
 import followRouter from './modules/common/follow-unfollow/followUnfollow.router';
 import libraryRouter from './modules/common/libray/library.router';
+import exploreRouter from './modules/common/explore/explore.router';
 
 const app: Application = express();
 
@@ -55,6 +56,7 @@ app.use('/api/v1/comment', commentRouter);
 app.use('/api/v1/react', reactRouter);
 app.use('/api/v1/follow', followRouter);
 app.use('/api/v1/library', libraryRouter);
+app.use('/api/v1/explore', exploreRouter);
 // ── Routes comment/react or any  ──────────────────────────────
 
 // Health check
