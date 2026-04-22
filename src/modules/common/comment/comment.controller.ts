@@ -2,20 +2,26 @@ import { Request, Response, NextFunction } from 'express';
 import { Comment } from './comment.model';
 import { createError } from '../../../utils/ApiError';
 import { Types } from 'mongoose';
+import { Story } from '../story/story.model';
+import { Podcast } from '../podcast/podcast.model';
+import { LiveNews } from '../liveNews/liveNews.model';
+import { sendNotification } from '../../../utils/notification.utils';
 
-// Helper — gets the author id and role from request
-// Both reader and writer can comment
-const getAuthorFromRequest = (req: Request): { authorId: string; authorRole: 'reader' | 'writer' } | null => {
-  if (req.readerId) return { authorId: req.readerId, authorRole: 'reader' };
-  if (req.writerId) return { authorId: req.writerId, authorRole: 'writer' };
+// Helper — gets author id and role from request
+const getAuthorFromRequest = (req: Request): {
+  authorId: string;
+  authorRole: 'reader' | 'writer';
+  authorModel: 'Reader' | 'Writer';
+} | null => {
+  if (req.readerId) return { authorId: req.readerId, authorRole: 'reader', authorModel: 'Reader' };
+  if (req.writerId) return { authorId: req.writerId, authorRole: 'writer', authorModel: 'Writer' };
   return null;
 };
 
 // ─────────────────────────────────────────
 // POST /api/comment/add
-// Add a top level comment or reply to a comment
+// Add top level comment or reply
 // body: { contentType, contentId, content, parentComment? }
-// Both reader and writer can comment
 // ─────────────────────────────────────────
 const addComment = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -31,13 +37,12 @@ const addComment = async (req: Request, res: Response, next: NextFunction) => {
     const author = getAuthorFromRequest(req);
     if (!author) throw createError(401, 'Unauthorized');
 
-    // If replying — make sure parent comment exists
+    // Validate parent comment exists if replying
+    let parentDoc: any = null;
     if (parentComment) {
-      const parent = await Comment.findById(parentComment);
-      if (!parent) throw createError(404, 'Parent comment not found');
-
-      // Reply must be on the same content
-      if (parent.contentId.toString() !== contentId) {
+      parentDoc = await Comment.findById(parentComment);
+      if (!parentDoc) throw createError(404, 'Parent comment not found');
+      if (parentDoc.contentId.toString() !== contentId) {
         throw createError(400, 'Reply must be on the same content as parent comment');
       }
     }
@@ -48,15 +53,49 @@ const addComment = async (req: Request, res: Response, next: NextFunction) => {
       contentId,
       author: author.authorId,
       authorRole: author.authorRole,
+      authorModel: author.authorModel,
       parentComment: parentComment || null,
     });
 
-    // Populate author info before sending response
-    await comment.populate(
-      author.authorRole === 'reader'
-        ? { path: 'author', model: 'Reader', select: 'name profileImage' }
-        : { path: 'author', model: 'Writer', select: 'name profileImage' }
-    );
+    await comment.populate({ path: 'author', select: 'name profileImage' });
+
+    // Send notifications (non-fatal — never block the response)
+    (async () => {
+      try {
+        if (!parentComment) {
+          // Top-level comment — notify content author (always a Writer)
+          let contentDoc: any = null;
+          if (contentType === 'story') contentDoc = await Story.findById(contentId).select('author');
+          else if (contentType === 'podcast') contentDoc = await Podcast.findById(contentId).select('author');
+          else if (contentType === 'liveNews') contentDoc = await LiveNews.findById(contentId).select('author');
+
+          if (contentDoc && contentDoc.author.toString() !== author.authorId) {
+            await sendNotification({
+              receiver: contentDoc.author,
+              receiverRole: 'writer',
+              type: 'new_comment',
+              message: `Someone commented on your ${contentType}`,
+              contentType,
+              contentId,
+            });
+          }
+        } else if (parentDoc) {
+          // Reply — notify parent comment author
+          if (parentDoc.author.toString() !== author.authorId) {
+            await sendNotification({
+              receiver: parentDoc.author,
+              receiverRole: parentDoc.authorRole,
+              type: 'comment_reply',
+              message: 'Someone replied to your comment',
+              contentType,
+              contentId,
+            });
+          }
+        }
+      } catch {
+        // Notification failure is non-fatal
+      }
+    })();
 
     return res.status(201).json({
       success: true,
@@ -70,8 +109,8 @@ const addComment = async (req: Request, res: Response, next: NextFunction) => {
 
 // ─────────────────────────────────────────
 // GET /api/comment/:contentType/:contentId
-// Get all top level comments for a content
-// Replies are nested inside each comment
+// Get all top level comments with nested replies
+// Author name and profileImage included in both
 // query: ?page=1&limit=10
 // ─────────────────────────────────────────
 const getComments = async (req: Request, res: Response, next: NextFunction) => {
@@ -83,18 +122,20 @@ const getComments = async (req: Request, res: Response, next: NextFunction) => {
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
-    // Get only top level comments first
     const [comments, total] = await Promise.all([
       Comment.find({
         contentType,
         contentId,
-        parentComment: null,  // top level only
+        parentComment: null,
         isDeleted: false,
       })
+        // refPath on author field handles Reader vs Writer automatically
+        .populate({ path: 'author', select: 'name profileImage' })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
-        .lean(), // lean for faster query — we'll add replies manually
+        .lean(),
+
       Comment.countDocuments({
         contentType,
         contentId,
@@ -103,24 +144,25 @@ const getComments = async (req: Request, res: Response, next: NextFunction) => {
       }),
     ]);
 
-    // For each top level comment get its replies
+    // Fetch replies for each top level comment
     const commentsWithReplies = await Promise.all(
-      comments.map(async (comment) => {
+      comments.map(async (comment: any) => {
         const replies = await Comment.find({
           parentComment: comment._id,
           isDeleted: false,
         })
-          .sort({ createdAt: 1 }) // oldest reply first
+          .populate({ path: 'author', select: 'name profileImage' })
+          .sort({ createdAt: 1 })
           .lean();
 
         return {
           ...comment,
-          likesCount: comment.likes.length,
-          dislikesCount: comment.dislikes.length,
-          replies: replies.map((reply) => ({
+          likesCount: comment.likes?.length || 0,
+          dislikesCount: comment.dislikes?.length || 0,
+          replies: replies.map((reply: any) => ({
             ...reply,
-            likesCount: reply.likes.length,
-            dislikesCount: reply.dislikes.length,
+            likesCount: reply.likes?.length || 0,
+            dislikesCount: reply.dislikes?.length || 0,
           })),
         };
       })
@@ -143,7 +185,7 @@ const getComments = async (req: Request, res: Response, next: NextFunction) => {
 
 // ─────────────────────────────────────────
 // PATCH /api/comment/edit/:commentId
-// Edit your own comment — only content can change
+// Edit your own comment content only
 // ─────────────────────────────────────────
 const editComment = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -159,13 +201,14 @@ const editComment = async (req: Request, res: Response, next: NextFunction) => {
     if (!comment) throw createError(404, 'Comment not found');
     if (comment.isDeleted) throw createError(400, 'Cannot edit a deleted comment');
 
-    // Only the author can edit their comment
     if (comment.author.toString() !== author.authorId) {
       throw createError(403, 'You can only edit your own comments');
     }
 
     comment.content = content;
     await comment.save();
+
+    await comment.populate({ path: 'author', select: 'name profileImage' });
 
     return res.status(200).json({
       success: true,
@@ -179,8 +222,7 @@ const editComment = async (req: Request, res: Response, next: NextFunction) => {
 
 // ─────────────────────────────────────────
 // DELETE /api/comment/delete/:commentId
-// Soft delete — comment shows as "comment removed"
-// but replies stay visible in thread
+// Soft delete — keeps thread intact
 // ─────────────────────────────────────────
 const deleteComment = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -192,12 +234,10 @@ const deleteComment = async (req: Request, res: Response, next: NextFunction) =>
     const comment = await Comment.findById(commentId);
     if (!comment) throw createError(404, 'Comment not found');
 
-    // Only the author can delete their comment
     if (comment.author.toString() !== author.authorId) {
       throw createError(403, 'You can only delete your own comments');
     }
 
-    // Soft delete — keep for reply thread integrity
     comment.isDeleted = true;
     comment.content = 'This comment has been removed';
     await comment.save();
@@ -213,8 +253,8 @@ const deleteComment = async (req: Request, res: Response, next: NextFunction) =>
 
 // ─────────────────────────────────────────
 // PATCH /api/comment/like/:commentId
-// Like a comment — if already liked removes like
-// If disliked first — removes dislike and adds like
+// Like — if already liked removes it (toggle)
+// If disliked before — removes dislike and adds like
 // ─────────────────────────────────────────
 const likeComment = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -232,12 +272,11 @@ const likeComment = async (req: Request, res: Response, next: NextFunction) => {
     const alreadyDisliked = comment.dislikes.some((id) => id.equals(userId));
 
     if (alreadyLiked) {
-      // Already liked — remove like (toggle off)
+      // Toggle off
       comment.likes = comment.likes.filter((id) => !id.equals(userId));
     } else {
-      // Add like
       comment.likes.push(userId);
-      // Remove from dislike if was disliked
+      // Remove from dislikes if was disliked
       if (alreadyDisliked) {
         comment.dislikes = comment.dislikes.filter((id) => !id.equals(userId));
       }
@@ -260,8 +299,8 @@ const likeComment = async (req: Request, res: Response, next: NextFunction) => {
 
 // ─────────────────────────────────────────
 // PATCH /api/comment/dislike/:commentId
-// Dislike a comment — if already disliked removes dislike
-// If liked first — removes like and adds dislike
+// Dislike — if already disliked removes it (toggle)
+// If liked before — removes like and adds dislike
 // ─────────────────────────────────────────
 const dislikeComment = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -279,12 +318,11 @@ const dislikeComment = async (req: Request, res: Response, next: NextFunction) =
     const alreadyLiked = comment.likes.some((id) => id.equals(userId));
 
     if (alreadyDisliked) {
-      // Already disliked — remove dislike (toggle off)
+      // Toggle off
       comment.dislikes = comment.dislikes.filter((id) => !id.equals(userId));
     } else {
-      // Add dislike
       comment.dislikes.push(userId);
-      // Remove from like if was liked
+      // Remove from likes if was liked
       if (alreadyLiked) {
         comment.likes = comment.likes.filter((id) => !id.equals(userId));
       }

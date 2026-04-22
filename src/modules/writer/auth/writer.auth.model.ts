@@ -14,6 +14,7 @@ export interface IWriter extends Document {
   age: number | null;
   isSocialLogin: boolean;
   followersCount: number;
+  fcmToken: string | null;
 }
 
 const writerSchema = new Schema<IWriter>(
@@ -81,6 +82,7 @@ const writerSchema = new Schema<IWriter>(
 },
 
     isSocialLogin: { type: Boolean, default: false },
+    fcmToken: { type: String, default: null, select: false },
   },
   { timestamps: true }
 );

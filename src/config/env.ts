@@ -35,3 +35,20 @@ export const S3_IMAGE_BUCKET: string = getEnvVar('S3_IMAGE_BUCKET');
 // SMTP / Mail Configuration
 export const SMTP_USER: string = getEnvVar('SMTP_USER');
 export const SMTP_PASS: string = getEnvVar('SMTP_PASS');
+
+// Stripe Configuration
+export const STRIPE_SECRET_KEY: string = getEnvVar('STRIPE_SECRET_KEY');
+export const STRIPE_WEBHOOK_SECRET: string = getEnvVar('STRIPE_WEBHOOK_SECRET');
+export const STRIPE_PUBLISHABLE_KEY: string = getEnvVar('STRIPE_PUBLISHABLE_KEY');
+
+// RevenueCat Configuration
+export const REVENUECAT_WEBHOOK_SECRET: string = getEnvVar('REVENUECAT_WEBHOOK_SECRET');
+
+// Client URL (for Stripe redirect after checkout)
+export const CLIENT_URL: string = getEnvVar('CLIENT_URL', 'http://localhost:3000');
+
+// Firebase
+export const FIREBASE_SERVICE_ACCOUNT_PATH: string = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './src/config/firebase-service-account.json';
+
+// Socket.IO
+export const SOCKET_IO_CORS_ORIGIN: string = process.env.SOCKET_IO_CORS_ORIGIN || '*';

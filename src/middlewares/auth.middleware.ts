@@ -4,6 +4,7 @@ import { Reader } from '../modules/reader/auth/reader.model';
 import { Writer } from '../modules/writer/auth/writer.auth.model';
 import { Admin } from '../modules/admin/auth/admin.model';
 import { Editor } from '../modules/editor/auth/editor.model';
+import { Subscription } from '../modules/common/subscription/subscription.model';
 
 // All role IDs available on every request
 declare global {
@@ -171,6 +172,60 @@ export const verifyEditor = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+
+// ─────────────────────────────────────────
+// Verify Subscribed Reader
+// Use this on any premium-gated route.
+// Also auto-corrects isSubscribed if a webhook was missed and the period has expired.
+// ─────────────────────────────────────────
+export const verifySubscribedReader = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = extractToken(req, res);
+    if (!token) return;
+
+    const decoded = verifyAccessToken(token);
+
+    const reader = await Reader.findById(decoded.id);
+    if (!reader) {
+      return res.status(401).json({ success: false, message: 'Reader not found. Authorization denied.' });
+    }
+    if (!reader.isVerified) {
+      return res.status(403).json({ success: false, message: 'Email not verified.' });
+    }
+
+    // Check real-time against the subscription record (catches missed webhooks)
+    const activeSub = await Subscription.findOne({
+      reader: decoded.id,
+      status: 'active',
+      currentPeriodEnd: { $gt: new Date() },
+    });
+
+    if (!activeSub) {
+      // Auto-correct stale flag if it was left as true
+      if (reader.isSubscribed) {
+        reader.isSubscribed = false;
+        await reader.save();
+      }
+      return res.status(403).json({
+        success: false,
+        message: 'This content requires an active premium subscription.',
+      });
+    }
+
+    req.readerId = decoded.id;
+    next();
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json({ success: false, message: 'Token expired. Please login again.' });
+      }
+      if (error.name === 'JsonWebTokenError') {
+        return res.status(401).json({ success: false, message: 'Invalid token. Authorization denied.' });
+      }
+    }
+    return res.status(500).json({ success: false, message: 'Server error during authentication.' });
+  }
+};
 
 // ─────────────────────────────────────────
 // Verify Reader OR Writer

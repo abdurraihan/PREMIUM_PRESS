@@ -84,6 +84,7 @@ const forgotPassword = async (req: Request, res: Response, next: NextFunction) =
     if (!admin) throw createError(404, 'No account found with this email');
 
     const otp = generateOtp();
+    console.log(otp)
     admin.otp = otp;
     admin.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await admin.save();

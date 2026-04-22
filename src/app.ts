@@ -1,11 +1,11 @@
-import express, { Application } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { NODE_ENV } from './config/env';
 import { errorHandler } from './middlewares/errorHandler.middlewares';
 
-// routers 
+// routers
 import readerAuthRouter from './modules/reader/auth/reader.router';
 import readerProfileRouter from './modules/reader/profile/reader.prorile.router';
 import writerAuthRouter from './modules/writer/auth/writer.auth.router';
@@ -22,19 +22,32 @@ import reactRouter from './modules/common/react/react.router';
 import followRouter from './modules/common/follow-unfollow/followUnfollow.router';
 import libraryRouter from './modules/common/libray/library.router';
 import exploreRouter from './modules/common/explore/explore.router';
+import subscriptionRouter from './modules/common/subscription/subscription.router';
+import adminSubscriptionRouter from './modules/admin/subscription/admin.subscription.router';
+import notificationRouter from './modules/common/notification/notification.router';
+import adminDashboardRouter from './modules/admin/admin.dashboard.router';
 
 const app: Application = express();
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+
+// Capture raw body for Stripe webhook signature verification.
+// req.rawBody is used inside subscription.controller.ts stripeWebhook handler.
+app.use(
+  express.json({
+    verify: (req: Request, _res: Response, buf: Buffer) => {
+      (req as any).rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 if (NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// ── Routes auth/profile ──────────────────────────────
+// ── Auth / Profile ─────────────────────────────────────────────────────────
 app.use('/api/v1/reader/auth', readerAuthRouter);
 app.use('/api/v1/reader/profile', readerProfileRouter);
 app.use('/api/v1/writer/auth', writerAuthRouter);
@@ -42,29 +55,36 @@ app.use('/api/v1/writer/profile', writerProfileRouter);
 app.use('/api/v1/admin/auth', adminAuthRouter);
 app.use('/api/v1/admin/profile', adminProfileRouter);
 app.use('/api/v1/editor/auth', editorAuthRouter);
-app.use('/api/v1/editor/profile', editorProfileRouter)
-// ── Routes auth/profile ──────────────────────────────
+app.use('/api/v1/editor/profile', editorProfileRouter);
 
-// ── Routes post/story or any  ──────────────────────────────
+// ── Content ────────────────────────────────────────────────────────────────
 app.use('/api/v1/story', storyRouter);
 app.use('/api/v1/podcast', podcastRouter);
 app.use('/api/v1/live-news', liveNewsRouter);
-// ── Routes post/story or any  ──────────────────────────────
 
-// ── Routes common or any  ──────────────────────────────
+// ── Social / Interactions ──────────────────────────────────────────────────
 app.use('/api/v1/comment', commentRouter);
 app.use('/api/v1/react', reactRouter);
 app.use('/api/v1/follow', followRouter);
 app.use('/api/v1/library', libraryRouter);
 app.use('/api/v1/explore', exploreRouter);
-// ── Routes comment/react or any  ──────────────────────────────
+
+// ── Subscription ───────────────────────────────────────────────────────────
+app.use('/api/v1/subscription', subscriptionRouter);
+app.use('/api/v1/admin/subscription', adminSubscriptionRouter);
+
+// ── Notifications ──────────────────────────────────────────────────────────
+app.use('/api/v1/notification', notificationRouter);
+
+// ── Admin Dashboard ────────────────────────────────────────────────────────
+app.use('/api/v1/admin/dashboard', adminDashboardRouter);
 
 // Health check
 app.get('/health', (_req, res) => {
   res.status(200).json({ success: true, status: 'Server is running' });
 });
 
-// Global error handler 
+// Global error handler
 app.use(errorHandler);
 
 export default app;

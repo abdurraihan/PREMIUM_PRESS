@@ -8,6 +8,7 @@ export interface IAdmin extends Document {
   profileImage: string;
   otp: string | null;
   otpExpiry: Date | null;
+  fcmToken: string | null;
 }
 
 const adminSchema = new Schema<IAdmin>(
@@ -49,6 +50,7 @@ const adminSchema = new Schema<IAdmin>(
     // OTP only used for forgot password
     otp: { type: String, default: null, select: false },
     otpExpiry: { type: Date, default: null, select: false },
+    fcmToken: { type: String, default: null, select: false },
   },
   { timestamps: true }
 );

@@ -6,3 +6,9 @@ dist/
 
 # environment variables
 .env
+
+# Firebase service account (contains private key — never commit)
+src/config/firebase-service-account.json
+
+PremiumPress.postman_collection.json
+PremiumPress.postman_environment.json

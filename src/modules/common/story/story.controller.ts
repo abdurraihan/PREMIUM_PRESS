@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { Story } from './story.model';
+import { Writer } from '../../writer/auth/writer.auth.model';
 import { createError } from '../../../utils/ApiError';
 import { uploadImageToS3, deleteImageFromS3 } from '../../../utils/s3.utils';
+import { sendNotification, notifyAllFollowers } from '../../../utils/notification.utils';
 
 // ══════════════════════════════════════════
 //  WRITER CONTROLLERS
@@ -379,6 +381,28 @@ const approveStory = async (req: Request, res: Response, next: NextFunction) => 
     story.scheduledAt = null;
     await story.save();
 
+    const writer = await Writer.findById(story.author).select('name');
+
+    await sendNotification({
+      receiver: story.author,
+      receiverRole: 'writer',
+      type: 'story_approved',
+      message: `Your story "${story.title}" has been approved and published`,
+      contentType: 'story',
+      contentId: story._id as any,
+    });
+
+    if (writer) {
+      await notifyAllFollowers({
+        writerId: story.author.toString(),
+        writerName: writer.name,
+        type: 'new_story',
+        message: `${writer.name} published a new story: "${story.title}"`,
+        contentType: 'story',
+        contentId: (story._id as any).toString(),
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Story approved and published',
@@ -415,11 +439,31 @@ const scheduleStory = async (req: Request, res: Response, next: NextFunction) =>
       throw createError(400, 'Only pending stories can be scheduled');
     }
 
-    // Status stays pending until scheduled time
-    // You can add a cron job later to auto-publish at scheduledAt time
     story.scheduledAt = scheduleDate;
-    story.status = 'published'; // mark published — frontend shows scheduled date
+    story.status = 'published';
     await story.save();
+
+    const writer = await Writer.findById(story.author).select('name');
+
+    await sendNotification({
+      receiver: story.author,
+      receiverRole: 'writer',
+      type: 'story_approved',
+      message: `Your story "${story.title}" has been scheduled for ${scheduleDate.toISOString()}`,
+      contentType: 'story',
+      contentId: story._id as any,
+    });
+
+    if (writer) {
+      await notifyAllFollowers({
+        writerId: story.author.toString(),
+        writerName: writer.name,
+        type: 'new_story',
+        message: `${writer.name} scheduled a new story: "${story.title}"`,
+        contentType: 'story',
+        contentId: (story._id as any).toString(),
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -454,6 +498,15 @@ const rejectStory = async (req: Request, res: Response, next: NextFunction) => {
     story.feedback = feedback;
     await story.save();
 
+    await sendNotification({
+      receiver: story.author,
+      receiverRole: 'writer',
+      type: 'story_rejected',
+      message: `Your story "${story.title}" was rejected. Check feedback.`,
+      contentType: 'story',
+      contentId: story._id as any,
+    });
+
     return res.status(200).json({
       success: true,
       message: 'Story rejected with feedback',
@@ -486,6 +539,15 @@ const requestRevision = async (req: Request, res: Response, next: NextFunction) 
     story.status = 'revision';
     story.feedback = feedback;
     await story.save();
+
+    await sendNotification({
+      receiver: story.author,
+      receiverRole: 'writer',
+      type: 'story_revision',
+      message: `Your story "${story.title}" needs revision. Check feedback.`,
+      contentType: 'story',
+      contentId: story._id as any,
+    });
 
     return res.status(200).json({
       success: true,

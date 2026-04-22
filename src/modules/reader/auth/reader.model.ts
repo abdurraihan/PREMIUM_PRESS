@@ -12,6 +12,8 @@ export interface IReader extends Document {
   otpExpiry: Date | null;
   isVerified: boolean;
   isSubscribed: boolean;
+  stripeCustomerId: string | null;
+  fcmToken: string | null;
   profileImage: string;
   phoneNumber: string | null;
   bio: string;
@@ -19,7 +21,7 @@ export interface IReader extends Document {
   city: string | null;
   age: number | null;
   interest: ReaderInterest;// single value now
-  followingCount:number;  
+  followingCount:number;
 }
 
 const readerSchema = new Schema<IReader>(
@@ -52,6 +54,8 @@ const readerSchema = new Schema<IReader>(
 
     isVerified: { type: Boolean, default: false },
     isSubscribed: { type: Boolean, default: false },
+    stripeCustomerId: { type: String, default: null, select: false },
+    fcmToken: { type: String, default: null, select: false },
 
     profileImage: {
       type: String,

@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { Podcast } from './podcast.model';
+import { Writer } from '../../writer/auth/writer.auth.model';
 import { createError } from '../../../utils/ApiError';
 import { uploadImageToS3, uploadAudioToS3, deleteImageFromS3, deleteFileFromS3 } from '../../../utils/s3.utils';
+import { sendNotification, notifyAllFollowers } from '../../../utils/notification.utils';
 
 interface PodcastFiles {
   audioFile?: Express.Multer.File[];
@@ -502,6 +504,28 @@ const approvePodcast = async (req: Request, res: Response, next: NextFunction) =
     podcast.scheduledAt = null;
     await podcast.save();
 
+    const writer = await Writer.findById(podcast.author).select('name');
+
+    await sendNotification({
+      receiver: podcast.author,
+      receiverRole: 'writer',
+      type: 'podcast_approved',
+      message: `Your podcast "${podcast.title}" has been approved and published`,
+      contentType: 'podcast',
+      contentId: podcast._id as any,
+    });
+
+    if (writer) {
+      await notifyAllFollowers({
+        writerId: podcast.author.toString(),
+        writerName: writer.name,
+        type: 'new_podcast',
+        message: `${writer.name} published a new podcast: "${podcast.title}"`,
+        contentType: 'podcast',
+        contentId: (podcast._id as any).toString(),
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Podcast approved and published',
@@ -539,6 +563,28 @@ const schedulePodcast = async (req: Request, res: Response, next: NextFunction) 
     podcast.status = 'published';
     await podcast.save();
 
+    const writer = await Writer.findById(podcast.author).select('name');
+
+    await sendNotification({
+      receiver: podcast.author,
+      receiverRole: 'writer',
+      type: 'podcast_approved',
+      message: `Your podcast "${podcast.title}" has been scheduled for ${scheduleDate.toISOString()}`,
+      contentType: 'podcast',
+      contentId: podcast._id as any,
+    });
+
+    if (writer) {
+      await notifyAllFollowers({
+        writerId: podcast.author.toString(),
+        writerName: writer.name,
+        type: 'new_podcast',
+        message: `${writer.name} scheduled a new podcast: "${podcast.title}"`,
+        contentType: 'podcast',
+        contentId: (podcast._id as any).toString(),
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: `Podcast scheduled for ${scheduleDate.toISOString()}`,
@@ -571,6 +617,15 @@ const rejectPodcast = async (req: Request, res: Response, next: NextFunction) =>
     podcast.feedback = feedback;
     await podcast.save();
 
+    await sendNotification({
+      receiver: podcast.author,
+      receiverRole: 'writer',
+      type: 'podcast_rejected',
+      message: `Your podcast "${podcast.title}" was rejected. Check feedback.`,
+      contentType: 'podcast',
+      contentId: podcast._id as any,
+    });
+
     return res.status(200).json({
       success: true,
       message: 'Podcast rejected with feedback',
@@ -602,6 +657,15 @@ const requestPodcastRevision = async (req: Request, res: Response, next: NextFun
     podcast.status = 'revision';
     podcast.feedback = feedback;
     await podcast.save();
+
+    await sendNotification({
+      receiver: podcast.author,
+      receiverRole: 'writer',
+      type: 'podcast_revision',
+      message: `Your podcast "${podcast.title}" needs revision. Check feedback.`,
+      contentType: 'podcast',
+      contentId: podcast._id as any,
+    });
 
     return res.status(200).json({
       success: true,

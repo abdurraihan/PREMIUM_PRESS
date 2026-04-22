@@ -3,6 +3,7 @@ import { Follow } from './followUnfollow.model';
 import { Reader } from '../../reader/auth/reader.model';
 import { Writer } from '../../writer/auth/writer.auth.model';
 import { createError } from '../../../utils/ApiError';
+import { sendNotification } from '../../../utils/notification.utils';
 
 
 // ─────────────────────────────────────────
@@ -56,15 +57,18 @@ const toggleFollow = async (req: Request, res: Response, next: NextFunction) => 
         // Not following — follow now
         await Follow.create({ reader: readerId, writer: writerId });
 
-        // Increment counts on both sides
-        await Promise.all([
-            Writer.findByIdAndUpdate(writerId, {
-                $inc: { followersCount: 1 },
-            }),
-            Reader.findByIdAndUpdate(readerId, {
-                $inc: { followingCount: 1 },
-            }),
+        const [readerDoc] = await Promise.all([
+            Reader.findById(readerId).select('name'),
+            Writer.findByIdAndUpdate(writerId, { $inc: { followersCount: 1 } }),
+            Reader.findByIdAndUpdate(readerId, { $inc: { followingCount: 1 } }),
         ]);
+
+        sendNotification({
+            receiver: writerId,
+            receiverRole: 'writer',
+            type: 'new_follower',
+            message: `${readerDoc?.name || 'Someone'} started following you`,
+        }).catch(() => {});
 
         return res.status(200).json({
             success: true,
