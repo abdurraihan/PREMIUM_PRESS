@@ -13,24 +13,24 @@ import {
 
 const router = Router();
 
-router.use(verifyAdmin);
+
 
 // ── Stats ─────────────────────────────────────────────────
 router.get('/stats', getDashboardStats);
 
 // ── User Management ───────────────────────────────────────
-router.get('/users', getUsers);
-router.get('/users/:userId', getUserById);
-router.delete('/users/:userId', deleteUser);
+router.get('/users', verifyAdmin, getUsers);
+router.get('/users/:userId',verifyAdmin, getUserById);
+router.delete('/users/:userId',verifyAdmin, deleteUser);
 
 // ── Content Archive ───────────────────────────────────────
-router.get('/archive', getArchive);
+router.get('/archive', verifyAdmin, getArchive);
 
 // ── Earnings ──────────────────────────────────────────────
-router.get('/earnings', getEarnings);
+router.get('/earnings',verifyAdmin, getEarnings);
 
 // ── App Settings ──────────────────────────────────────────
 router.get('/settings', getSettings);
-router.patch('/settings', updateSettings);
+router.patch('/settings',verifyAdmin, updateSettings);
 
 export default router;
